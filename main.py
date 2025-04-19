@@ -5,11 +5,15 @@ from services.lastfm import (
 from services.musicbrainz import fetch_artist_genre_data as musicbrainz_fetch_artist_genre_data
 from services.spotify import fetch_spotify_data as spotify_fetch_spotify_data
 from services.combine_artist_data import combine_all_artist_data
+from services.neo4j_export import export_artist_data_to_neo4j
+from services.mysql_export import export_genres_to_mysql
 
 WRITE_TO_FILE = True
 RELOAD_LASTFM = False
 RELOAD_MUSICBRAINZ = False
-RELOAD_SPOTIFY = True
+RELOAD_SPOTIFY = False
+EXPORT_TO_NEO4J = False
+EXPORT_TO_MYSQL = True
 
 def main():
     lastfm_top_artist_data = None
@@ -52,7 +56,14 @@ def main():
     )
     print(f"Combined dataset contains {len(combined_artist_data)} artists")
 
+    if EXPORT_TO_NEO4J:
+        print("\nExporting combined artist data to Neo4j...")
+        export_artist_data_to_neo4j(combined_artist_data)
 
+
+    if EXPORT_TO_MYSQL:
+        print("\nExporting genres to MySQL...")
+        export_genres_to_mysql()
 
 
 if __name__ == "__main__":

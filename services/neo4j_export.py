@@ -84,6 +84,7 @@ def export_artist_data_to_neo4j(artist_data=None):
                     {"id1": id_pair[0], "id2": id_pair[1]}
                 )
 
+
         print(f"Imported {len(artist_data)} artists and {len(created_links)} relationships into Neo4j.")
     except Exception as e:
         print(f"Error exporting to Neo4j: {e}")
