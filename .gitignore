@@ -1,0 +1,56 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+.coverage
+htmlcov/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+
+# MyPy / Pyright / Pyre
+.mypy_cache/
+.pytype/
+.pyre/
+*.pyi
+
+# Environment variables
+.env
+.env.*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+
+# Jupyter (if used for testing/debugging)
+.ipynb_checkpoints/
+
+# OS / Misc
+.DS_Store
+Thumbs.db
+
+
+
+/data/temp/
+/.idea
+/.idea
