@@ -8,11 +8,11 @@ from services.combine_artist_data import combine_all_artist_data
 from services.neo4j_export import export_artist_data_to_neo4j
 from services.mysql_export import export_genres_to_mysql
 
-WRITE_TO_FILE = True
-RELOAD_LASTFM = False
-RELOAD_MUSICBRAINZ = False
-RELOAD_SPOTIFY = False
-EXPORT_TO_NEO4J = False
+WRITE_TO_FILE = False
+RELOAD_LASTFM = True
+RELOAD_MUSICBRAINZ = True
+RELOAD_SPOTIFY = True
+EXPORT_TO_NEO4J = True
 EXPORT_TO_MYSQL = True
 
 def main():
