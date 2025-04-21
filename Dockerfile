@@ -4,11 +4,11 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Copy dependencies first (for cache)
+# Copy dependencies first
 COPY requirements.txt .
 
 # Install dependencies
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip && pip install -r requirements.txt --verbose
 
 # Copy the rest of the code
 COPY . .
