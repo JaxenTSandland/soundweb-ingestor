@@ -2,6 +2,8 @@ import os
 import json
 import neo4j
 from dotenv import load_dotenv
+from neo4j import GraphDatabase
+from datetime import datetime
 
 load_dotenv()
 
@@ -17,6 +19,17 @@ artist_data_path = os.path.join(temp_dir, "artistData.json")
 
 def normalize_name(name):
     return ''.join(c.lower() for c in name if c.isalnum()).strip()
+
+def update_neo4j_metadata(session, name="lastSync"):
+    now_iso = datetime.now().isoformat()
+    session.run(
+        """
+        MERGE (m:Metadata {name: $name})
+        SET m.updatedAt = datetime($timestamp)
+        """,
+        name=name,
+        timestamp=now_iso
+    )
 
 def export_artist_data_to_neo4j(artist_data=None):
     if artist_data is None:
@@ -85,6 +98,7 @@ def export_artist_data_to_neo4j(artist_data=None):
                 )
 
 
+        update_neo4j_metadata(session)
         print(f"Imported {len(artist_data)} artists and {len(created_links)} relationships into Neo4j.")
     except Exception as e:
         print(f"Error exporting to Neo4j: {e}")
