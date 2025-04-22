@@ -69,12 +69,14 @@ def fetch_top_artists(write_to_file=True):
 
     return all_values
 
-def fetch_artist_details(write_to_file=True):
-    with open(top_artists_path, "r", encoding="utf-8") as f:
-        top_artists = json.load(f)
+def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=True):
+    if top_artists is None:
+        with open(top_artists_path, "r", encoding="utf-8") as f:
+            top_artists = json.load(f)
 
-    with open(genre_map_path, "r", encoding="utf-8") as f:
-        genre_map = json.load(f)
+    if genre_map is None:
+        with open(genre_map_path, "r", encoding="utf-8") as f:
+            genre_map = json.load(f)
 
     seen = set()
     results = []

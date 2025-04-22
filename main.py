@@ -23,7 +23,7 @@ def main():
         lastfm_top_artist_data = lastfm_fetch_top_artists(write_to_file=WRITE_TO_FILE)
 
         print("\nFetching detailed info for top artists...")
-        lastfm_detailed_artist_data = lastfm_fetch_artist_details(write_to_file=WRITE_TO_FILE)
+        lastfm_detailed_artist_data = lastfm_fetch_artist_details(top_artists=lastfm_top_artist_data, write_to_file=WRITE_TO_FILE)
 
         print(f"\nCollected {len(lastfm_top_artist_data)} top artists")
         print(f"Collected {len(lastfm_detailed_artist_data)} detailed artist entries")
