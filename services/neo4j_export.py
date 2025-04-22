@@ -33,8 +33,7 @@ def update_neo4j_metadata(session, name="lastSync"):
 
 def export_artist_data_to_neo4j(artist_data=None):
     if artist_data is None:
-        with open(artist_data_path, "r", encoding="utf-8") as f:
-            artist_data = json.load(f)
+        raise ValueError('artist_data cannot be None')
 
     driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     session = driver.session(database=NEO4J_TOPARTISTS_DB)

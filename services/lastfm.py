@@ -1,6 +1,5 @@
 import os
 import json
-import time
 import requests
 from dotenv import load_dotenv
 
@@ -11,10 +10,6 @@ API_KEY = os.getenv("LASTFM_API_KEY")
 MAX_ARTIST_LOOKUP = 1000
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-os.makedirs(os.path.join(project_root, 'data', 'temp'), exist_ok=True)
-
-top_artists_path = os.path.join(project_root, 'data', 'temp', 'lastfmTopArtists.json')
-detailed_artists_path = os.path.join(project_root, 'data', 'temp', 'lastfmArtists.json')
 genre_map_path = os.path.join(project_root, 'data', 'genreMap.json')
 
 def normalize_name(name):
@@ -36,7 +31,7 @@ def get_similar_artists(name):
         print(f"Failed to fetch similar artists for {name}: {e}")
         return []
 
-def fetch_top_artists(write_to_file=True):
+def fetch_top_artists(write_to_file=False):  # write_to_file retained for interface compatibility
     all_artists = {}
 
     for page in range(1, 21):
@@ -61,18 +56,11 @@ def fetch_top_artists(write_to_file=True):
         except Exception as e:
             print(f"Failed to fetch top artists page {page}: {e}")
 
-    all_values = list(all_artists.values())
-    if write_to_file:
-        with open(top_artists_path, "w", encoding="utf-8") as f:
-            json.dump(all_values, f, indent=2)
-        print(f"Saved {len(all_artists)} artists to lastfmTopArtists.json")
+    return list(all_artists.values())
 
-    return all_values
-
-def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=True):
+def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=False):
     if top_artists is None:
-        with open(top_artists_path, "r", encoding="utf-8") as f:
-            top_artists = json.load(f)
+        raise ValueError("top_artists must be provided when not using temp files.")
 
     if genre_map is None:
         with open(genre_map_path, "r", encoding="utf-8") as f:
@@ -127,10 +115,5 @@ def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=True):
             i += 1
         except Exception as e:
             print(f"Failed to fetch details for {name}: {e}")
-
-    if write_to_file:
-        with open(detailed_artists_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
-        print(f"Saved enriched artist data to lastfmArtists.json")
 
     return results

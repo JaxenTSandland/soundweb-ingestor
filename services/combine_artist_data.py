@@ -18,7 +18,6 @@ def normalize_name(name):
 
 
 def combine_all_artist_data(
-    write_to_file=True,
     lastfm_artists=None,
     spotify_artists=None,
     musicbrainz_artists=None
@@ -102,9 +101,5 @@ def combine_all_artist_data(
         })
 
         id_counter += 1
-
-    if write_to_file:
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(merged, f, indent=2)
 
     return merged
