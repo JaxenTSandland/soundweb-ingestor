@@ -3,7 +3,7 @@ import json
 import neo4j
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
-from datetime import datetime
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -21,7 +21,7 @@ def normalize_name(name):
     return ''.join(c.lower() for c in name if c.isalnum()).strip()
 
 def update_neo4j_metadata(session, name="lastSync"):
-    now_iso = datetime.now().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
     session.run(
         """
         MERGE (m:Metadata {name: $name})
