@@ -31,7 +31,7 @@ def get_similar_artists(name):
         print(f"Failed to fetch similar artists for {name}: {e}")
         return []
 
-def fetch_top_artists(write_to_file=False):  # write_to_file retained for interface compatibility
+def fetch_top_artists(write_to_file=False):
     all_artists = {}
 
     for page in range(1, 21):
@@ -58,7 +58,7 @@ def fetch_top_artists(write_to_file=False):  # write_to_file retained for interf
 
     return list(all_artists.values())
 
-def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=False):
+def fetch_artist_details(top_artists=None, genre_map=None):
     if top_artists is None:
         raise ValueError("top_artists must be provided when not using temp files.")
 

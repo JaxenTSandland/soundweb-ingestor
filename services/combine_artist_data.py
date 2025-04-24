@@ -88,6 +88,7 @@ def combine_all_artist_data(
         merged.append({
             "id": str(id_counter),
             "name": spotify["name"],
+            "followers": spotify["followers"],
             "genres": genres,
             "popularity": spotify.get("popularity", 0),
             "spotifyId": spotify.get("spotifyId"),
