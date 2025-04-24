@@ -1,5 +1,8 @@
 import os
 import json
+from typing import List
+
+from utils.artist_node import ArtistNode
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 data_dir = os.path.join(project_root, "data")
@@ -17,11 +20,12 @@ def normalize_name(name):
     return ''.join(c.lower() for c in name if c.isalnum()).strip()
 
 
+
 def combine_all_artist_data(
     lastfm_artists=None,
     spotify_artists=None,
     musicbrainz_artists=None
-):
+) -> List[ArtistNode]:
     if lastfm_artists is None:
         with open(lastfm_path, "r", encoding="utf-8") as f:
             lastfm_artists = json.load(f)
@@ -39,7 +43,7 @@ def combine_all_artist_data(
     musicbrainz_map = {normalize_name(a["name"]): a for a in musicbrainz_artists}
 
     seen = set()
-    merged = []
+    merged: List[ArtistNode] = []
     id_counter = 1
 
     for spotify in spotify_artists:
@@ -53,6 +57,7 @@ def combine_all_artist_data(
         if not lastfm and not mb:
             continue
 
+        # Genre resolution
         genre_scores = {}
         for source in [lastfm, spotify, mb]:
             if source and "genres" in source:
@@ -70,6 +75,7 @@ def combine_all_artist_data(
         top_genre = genres[0]
         color = genre_map.get(top_genre, {}).get("color", "#cccccc")
 
+        # Coordinate calculation
         x_total = 0
         y_total = 0
         weight_total = 0
@@ -85,22 +91,22 @@ def combine_all_artist_data(
         y = y_total / weight_total if weight_total else None
         image_url = spotify.get("imageUrl") or (lastfm.get("imageUrl") if lastfm else None)
 
-        merged.append({
-            "id": str(id_counter),
-            "name": spotify["name"],
-            "followers": spotify["followers"],
-            "genres": genres,
-            "popularity": spotify.get("popularity", 0),
-            "spotifyId": spotify.get("spotifyId"),
-            "spotifyUrl": spotify.get("spotifyUrl"),
-            "lastfmMBID": lastfm.get("mbid") if lastfm else None,
-            "imageUrl": image_url,
-            "relatedArtists": lastfm.get("similar", []) if lastfm else [],
-            "color": color,
-            "x": x,
-            "y": y
-        })
+        artist_node = ArtistNode(
+            id=str(id_counter),
+            name=spotify["name"],
+            genres=genres,
+            popularity=spotify.get("popularity", 0),
+            spotifyId=spotify.get("spotifyId"),
+            spotifyUrl=spotify.get("spotifyUrl"),
+            lastfmMBID=lastfm.get("mbid") if lastfm else None,
+            imageUrl=image_url,
+            relatedArtists=lastfm.get("similar", []) if lastfm else [],
+            color=color,
+            x=x,
+            y=y
+        )
 
+        merged.append(artist_node)
         id_counter += 1
 
     return merged
