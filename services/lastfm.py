@@ -10,6 +10,10 @@ API_KEY = os.getenv("LASTFM_API_KEY")
 MAX_ARTIST_LOOKUP = 1000
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+os.makedirs(os.path.join(project_root, 'data', 'temp'), exist_ok=True)
+
+top_artists_path = os.path.join(project_root, 'data', 'temp', 'lastfmTopArtists.json')
+detailed_artists_path = os.path.join(project_root, 'data', 'temp', 'lastfmArtists.json')
 genre_map_path = os.path.join(project_root, 'data', 'genreMap.json')
 
 def normalize_name(name):
@@ -28,7 +32,7 @@ def get_similar_artists(name):
         data = response.json()
         return [a["name"] for a in data.get("similarartists", {}).get("artist", [])]
     except Exception as e:
-        print(f"Failed to fetch similar artists for {name}: {e}")
+        print(f"[LASTFM] Failed to fetch similar artists for {name}: {e}")
         return []
 
 def fetch_top_artists(write_to_file=False):
@@ -52,15 +56,24 @@ def fetch_top_artists(write_to_file=False):
                         "mbid": artist.get("mbid"),
                         "url": artist.get("url")
                     }
-            print(f"Fetched page {page} with {len(data.get('artists', {}).get('artist', []))} artists")
+            print(f"[LASTFM] Fetched page {page} with {len(data.get('artists', {}).get('artist', []))} artists")
         except Exception as e:
-            print(f"Failed to fetch top artists page {page}: {e}")
+            print(f"[LASTFM] Failed to fetch top artists page {page}: {e}")
 
-    return list(all_artists.values())
+    all_values = list(all_artists.values())
+    if write_to_file:
+        with open(top_artists_path, "w", encoding="utf-8") as f:
+            json.dump(all_values, f, indent=2)
+        print(f"Saved {len(all_artists)} artists to lastfmTopArtists.json")
 
-def fetch_artist_details(top_artists=None, genre_map=None):
-    if top_artists is None:
-        raise ValueError("top_artists must be provided when not using temp files.")
+    return all_values
+
+def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=False):
+    if top_artists is None and write_to_file is False:
+        raise ValueError("[LASTFM] top_artists must be provided when not using temp files.")
+    elif top_artists is None and write_to_file is True:
+        with open(top_artists_path, "r", encoding="utf-8") as f:
+            top_artists = json.load(f)
 
     if genre_map is None:
         with open(genre_map_path, "r", encoding="utf-8") as f:
@@ -91,7 +104,7 @@ def fetch_artist_details(top_artists=None, genre_map=None):
             data = response.json().get("artist")
 
             if not data:
-                print(f"No artist data for {name}")
+                print(f"[LASTFM] No artist data for {name}")
                 continue
 
             tags = [tag["name"].lower() for tag in data.get("tags", {}).get("tag", [])]
@@ -114,6 +127,11 @@ def fetch_artist_details(top_artists=None, genre_map=None):
             print(f"({i}/{MAX_ARTIST_LOOKUP}) Processed: {name} ({', '.join(filtered_tags)})")
             i += 1
         except Exception as e:
-            print(f"Failed to fetch details for {name}: {e}")
+            print(f"[LASTFM] Failed to fetch details for {name}: {e}")
+
+    if write_to_file:
+        with open(detailed_artists_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
+        print(f"Saved enriched artist data to lastfmArtists.json")
 
     return results

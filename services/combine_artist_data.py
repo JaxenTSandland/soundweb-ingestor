@@ -2,7 +2,7 @@ import os
 import json
 from typing import List
 
-from utils.artist_node import ArtistNode
+from model.artist_node import ArtistNode
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 data_dir = os.path.join(project_root, "data")
@@ -22,6 +22,7 @@ def normalize_name(name):
 
 
 def combine_all_artist_data(
+    write_to_file=False,
     lastfm_artists=None,
     spotify_artists=None,
     musicbrainz_artists=None
@@ -44,7 +45,6 @@ def combine_all_artist_data(
 
     seen = set()
     merged: List[ArtistNode] = []
-    id_counter = 1
 
     for spotify in spotify_artists:
         norm_name = normalize_name(spotify["name"])
@@ -92,7 +92,7 @@ def combine_all_artist_data(
         image_url = spotify.get("imageUrl") or (lastfm.get("imageUrl") if lastfm else None)
 
         artist_node = ArtistNode(
-            id=str(id_counter),
+            id=spotify.get("spotifyId"),
             name=spotify["name"],
             genres=genres,
             popularity=spotify.get("popularity", 0),
@@ -103,10 +103,14 @@ def combine_all_artist_data(
             relatedArtists=lastfm.get("similar", []) if lastfm else [],
             color=color,
             x=x,
-            y=y
+            y=y,
+            userTags=[]
         )
 
         merged.append(artist_node)
-        id_counter += 1
+
+    if write_to_file:
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump([artist.to_dict() for artist in merged], f, indent=2)
 
     return merged

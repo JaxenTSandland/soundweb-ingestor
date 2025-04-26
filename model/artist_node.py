@@ -1,3 +1,4 @@
+import json
 from typing import List, Optional
 from dataclasses import dataclass, asdict
 
@@ -19,3 +20,6 @@ class ArtistNode:
 
     def to_dict(self):
         return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), default=str)

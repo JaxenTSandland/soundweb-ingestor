@@ -13,6 +13,11 @@ SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search"
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 data_dir = os.path.join(project_root, "data")
+temp_dir = os.path.join(data_dir, "temp")
+os.makedirs(temp_dir, exist_ok=True)
+
+lastfm_artist_path = os.path.join(temp_dir, "lastfmArtists.json")
+spotify_output_path = os.path.join(temp_dir, "spotifyArtists.json")
 
 def normalize_name(name):
     return ''.join(c.lower() for c in name if c.isalnum()).strip()
@@ -46,9 +51,12 @@ def search_spotify_artist(artist_name, token):
     exact = next((a for a in items if a["name"].lower() == artist_name.lower()), None)
     return exact or max(items, key=lambda a: a.get("popularity", 0))
 
-def fetch_spotify_data(lastfm_artists=None):
-    if lastfm_artists is None:
-        raise ValueError('lastfm_artists cannot be None')
+def fetch_spotify_data(write_to_file=True, lastfm_artists=None):
+    if lastfm_artists is None and write_to_file is False:
+        raise ValueError('[SPOTIFY] lastfm_artists cannot be None')
+    elif lastfm_artists is None and write_to_file is True:
+        with open(lastfm_artist_path, "r", encoding="utf-8") as f:
+            lastfm_artists = json.load(f)
 
     token = get_spotify_access_token()
     results = []
@@ -65,7 +73,7 @@ def fetch_spotify_data(lastfm_artists=None):
             continue
         seen.add(norm_name)
 
-        print(f"({i}/{MAX_ARTIST_LOOKUP}) Searching Spotify for: {name}")
+        print(f"[SPOTIFY] ({i}/{MAX_ARTIST_LOOKUP}) Searching Spotify for: {name}")
         try:
             spotify_artist = search_spotify_artist(name, token)
             if not spotify_artist:
@@ -85,7 +93,10 @@ def fetch_spotify_data(lastfm_artists=None):
 
             i += 1
         except Exception as err:
-            print(f"Failed to fetch from Spotify for {name}: {err}")
+            print(f"[SPOTIFY] Failed to fetch from Spotify for {name}: {err}")
 
+    if write_to_file:
+        with open(spotify_output_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
 
     return results

@@ -13,8 +13,12 @@ MAX_ARTIST_COUNT = 1000
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 data_dir = os.path.join(project_root, "data")
+temp_dir = os.path.join(data_dir, "temp")
+os.makedirs(temp_dir, exist_ok=True)
 
+top_artists_path = os.path.join(temp_dir, "lastfmTopArtists.json")
 genre_map_path = os.path.join(data_dir, "genreMap.json")
+musicbrainz_output_path = os.path.join(temp_dir, "musicBrainzArtists.json")
 
 def normalize_name(name):
     return ''.join(c.lower() for c in name if c.isalnum()).strip()
@@ -36,12 +40,15 @@ def fetch_with_retry(url, retries=MAX_RETRIES, delay_ms=DELAY_MS):
             if attempt < retries - 1:
                 delay(delay_ms)
             else:
-                print(f"Failed after {retries} attempts: {e}")
+                print(f"[MUSICBRAINZ] Failed after {retries} attempts: {e}")
                 return None
 
-def fetch_artist_genre_data(top_artists=None):
-    if top_artists is None:
-        raise ValueError("top_artists cannot be None")
+def fetch_artist_genre_data(write_to_file=True, top_artists=None):
+    if top_artists is None and write_to_file is False:
+        raise ValueError("[MUSICBRAINZ] top_artists cannot be None")
+    elif top_artists is None and write_to_file is True:
+        with open(top_artists_path, "r", encoding="utf-8") as f:
+            top_artists = json.load(f)
 
     with open(genre_map_path, "r", encoding="utf-8") as f:
         genre_map = json.load(f)
@@ -80,8 +87,11 @@ def fetch_artist_genre_data(top_artists=None):
             "genres": tags
         })
 
-        print(f"({i}) Processed: {artist_data['name']} ({', '.join(tags)})")
+        print(f"[MUSICBRAINZ] ({i}) Processed: {artist_data['name']} ({', '.join(tags)})")
         i += 1
 
+    if write_to_file:
+        with open(musicbrainz_output_path, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2)
 
     return results

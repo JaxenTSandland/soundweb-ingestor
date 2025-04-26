@@ -47,9 +47,9 @@ def export_genres_to_mysql(genre_map=None):
             cursor.execute(insert_query, (name, x, y, color, count))
 
         conn.commit()
-        print(f"Exported {len(genre_map)} genres to MySQL.")
+        print(f"[MYSQL] Exported {len(genre_map)} genres to MySQL.")
     except Exception as e:
-        print(f"Error exporting genres to MySQL: {e}")
+        print(f"[MYSQL] Error exporting genres to MySQL: {e}")
     finally:
         if cursor:
             cursor.close()
