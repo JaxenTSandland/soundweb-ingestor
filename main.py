@@ -10,13 +10,14 @@ from services.mysql_export import export_genres_to_mysql
 import os
 
 ENV = os.getenv("ENV", "production")
-WRITE_TO_FILE = ENV == "local"
+LOCAL_ENV = ENV == "local"
+WRITE_TO_FILE = LOCAL_ENV
 
-RELOAD_LASTFM = False
-RELOAD_MUSICBRAINZ = False
-RELOAD_SPOTIFY = False
-EXPORT_TO_NEO4J = True
-EXPORT_TO_MYSQL = False
+RELOAD_LASTFM = True if LOCAL_ENV else True
+RELOAD_MUSICBRAINZ = True if LOCAL_ENV else True
+RELOAD_SPOTIFY = True if LOCAL_ENV else True
+EXPORT_TO_NEO4J = True if LOCAL_ENV else True
+EXPORT_TO_MYSQL = True if LOCAL_ENV else True
 
 def main():
     lastfm_top_artist_data = None
