@@ -1,13 +1,17 @@
+import os
+
 from services.lastfm import (
-    fetch_top_artists as lastfm_fetch_top_artists,
-    fetch_artist_details as lastfm_fetch_artist_details,
+    fetch_top_artists,
+    fetch_artist_details,
 )
-from services.musicbrainz import fetch_artist_genre_data as musicbrainz_fetch_artist_genre_data
-from services.spotify import fetch_spotify_data as spotify_fetch_spotify_data
-from services.combine_artist_data import combine_all_artist_data
+from services.musicbrainz import fetch_artist_genre_data
+from services.spotify import fetch_spotify_data
+from services.combine_artist_data import combine_top_artist_data, implement_genre_data
 from services.neo4j_export import export_artist_data_to_neo4j
 from services.mysql_export import export_genres_to_mysql
-import os
+
+from model.artist_node import ArtistNode
+from utils.checkpoint import save_checkpoint, load_checkpoint
 
 ENV = os.getenv("ENV", "production")
 LOCAL_ENV = ENV == "local"
@@ -19,51 +23,109 @@ RELOAD_SPOTIFY = True if LOCAL_ENV else True
 EXPORT_TO_NEO4J = True if LOCAL_ENV else True
 EXPORT_TO_MYSQL = True if LOCAL_ENV else True
 
+
 def main():
-    lastfm_top_artist_data = None
-    lastfm_detailed_artist_data = None
+    # generate_custom_artist_data(
+    #     name="La la land",
+    #     spotify_id=None
+    # )
+    generate_top_artist_data()
+
+
+def generate_top_artist_data(max_artists:int=1000):
+    artists: list[ArtistNode] = []
+
     if RELOAD_LASTFM:
-        print("Fetching top artists from Last.fm...")
-        lastfm_top_artist_data = lastfm_fetch_top_artists(write_to_file=WRITE_TO_FILE)
+        print("[MAIN] Fetching top artists from Last.fm...")
+        artists = fetch_top_artists(max_artists=max_artists)
+        if WRITE_TO_FILE:
+            save_checkpoint(artists, "lastfm_top")
 
-        print("\nFetching detailed info for top artists...")
-        lastfm_detailed_artist_data = lastfm_fetch_artist_details(top_artists=lastfm_top_artist_data, write_to_file=WRITE_TO_FILE)
+        print("\n[MAIN] Fetching detailed info from Last.fm...")
+        artists = fetch_artist_details(artists)
+        if WRITE_TO_FILE:
+            save_checkpoint(artists, "lastfm_detailed")
 
-        print(f"\nCollected {len(lastfm_top_artist_data)} top artists")
-        print(f"Collected {len(lastfm_detailed_artist_data)} detailed artist entries")
+        print(f"\n[MAIN] Collected detailed info for {len(artists)} artists.")
+    else:
+        artists = load_checkpoint('lastfm_detailed')
+        print(f"\n[MAIN] Loaded top artists from Last.fm detailed json file")
 
-    musicbrainz_artist_data = None
     if RELOAD_MUSICBRAINZ:
-        print("\nFetching genre data from MusicBrainz...")
-        musicbrainz_artist_data = musicbrainz_fetch_artist_genre_data(top_artists=lastfm_top_artist_data, write_to_file=WRITE_TO_FILE)
+        print("\n[MAIN] Fetching genre data from MusicBrainz...")
+        artists = fetch_artist_genre_data(artists)
+        if WRITE_TO_FILE:
+            save_checkpoint(artists, "musicbrainz")
+        print(f"[MAIN] Collected MusicBrainz genre info for {len(artists)} artists.")
+    else:
+        artists = load_checkpoint('musicbrainz')
+        print(f"\n[MAIN] Loaded top artists from MusicBrainz detailed json file")
 
-        print(f"Collected genre info for {len(musicbrainz_artist_data)} artists")
-
-    spotify_artist_data = None
     if RELOAD_SPOTIFY:
-        print("\nFetching Spotify data...")
-        spotify_artist_data = spotify_fetch_spotify_data(
-            lastfm_artists=lastfm_detailed_artist_data,
-            write_to_file=WRITE_TO_FILE
-        )
-        print(f"Collected Spotify info for {len(spotify_artist_data)} artists")
+        print("\n[MAIN] Fetching Spotify data...")
+        artists = fetch_spotify_data(artists)
+        if WRITE_TO_FILE:
+            save_checkpoint(artists, "spotify")
+        print(f"[MAIN] Collected Spotify info for {len(artists)} artists.")
+    else:
+        artists = load_checkpoint('spotify')
+        print(f"\n[MAIN] Loaded top artists from Spotify detailed json file")
 
-    print("\nCombining all data sources into unified dataset...")
-    combined_artist_data = combine_all_artist_data(
-        write_to_file=WRITE_TO_FILE,
-        lastfm_artists=lastfm_detailed_artist_data,
-        spotify_artists=spotify_artist_data,
-        musicbrainz_artists=musicbrainz_artist_data
-    )
-    print(f"Combined dataset contains {len(combined_artist_data)} artists")
+    print("\n[MAIN] Finalizing artist nodes (calculate x/y/color)...")
+    artists = implement_genre_data(artists, top_artists=True)
+    if WRITE_TO_FILE:
+        save_checkpoint(artists, "final_genre_combined")
+    print(f"[MAIN] Finalized {len(artists)} artist nodes wth proper genre data implemented.")
 
     if EXPORT_TO_NEO4J:
-        print("\nExporting combined artist data to Neo4j...")
-        export_artist_data_to_neo4j(combined_artist_data, write_to_file=WRITE_TO_FILE)
+        print("\n[MAIN] Exporting artists to Neo4j...")
+        export_artist_data_to_neo4j(artists, write_to_file=WRITE_TO_FILE, add_top_artist_label=True)
 
     if EXPORT_TO_MYSQL:
-        print("\nExporting genres to MySQL...")
+        print("\n[MAIN] Exporting genres to MySQL...")
         export_genres_to_mysql()
+
+
+
+def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: str = None):
+    if not spotify_id and not name:
+        raise ValueError("[MAIN] spotify_id or artist name is required for custom artist ingestion.")
+
+    print(f"[MAIN] Starting custom artist ingestion for {name} (SpotifyID: {spotify_id})...")
+
+
+    artist = ArtistNode(
+        id=spotify_id,
+        name=name,
+        spotifyId=spotify_id,
+        lastfmMBID=mbid,
+        genres=[],
+        userTags=[],
+        relatedArtists=[],
+    )
+
+    artists = [artist]
+
+
+    print("[MAIN] Fetching Spotify details...")
+    artists = fetch_spotify_data(artists, write_to_file=False)
+
+    print("[MAIN] Fetching Last.fm details...")
+    artists = fetch_artist_details(artists, write_to_file=False)
+
+    print("\n[MAIN] Fetching genre data from MusicBrainz...")
+    artists = fetch_artist_genre_data(artists, write_to_file=False)
+
+    print("[MAIN] Combining final data...")
+    artists = implement_genre_data(artists, top_artists=False)
+
+    #print(artists)
+
+    print("[MAIN] Exporting to Neo4j...")
+    export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+
+    print(f"[MAIN] Finished ingesting {name}.")
+
 
 if __name__ == "__main__":
     main()

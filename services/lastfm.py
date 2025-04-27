@@ -1,13 +1,16 @@
 import os
 import json
+from typing import List, Optional
+
 import requests
 from dotenv import load_dotenv
+
+from model.artist_node import ArtistNode
 
 load_dotenv()
 
 BASE_URL = "https://ws.audioscrobbler.com/2.0/"
 API_KEY = os.getenv("LASTFM_API_KEY")
-MAX_ARTIST_LOOKUP = 1000
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 os.makedirs(os.path.join(project_root, 'data', 'temp'), exist_ok=True)
@@ -35,10 +38,11 @@ def get_similar_artists(name):
         print(f"[LASTFM] Failed to fetch similar artists for {name}: {e}")
         return []
 
-def fetch_top_artists(write_to_file=False):
+def fetch_top_artists(write_to_file=False, max_artists:int=1000) -> List[ArtistNode]:
     all_artists = {}
+    page = 1
 
-    for page in range(1, 21):
+    while len(all_artists) < max_artists:
         try:
             response = requests.get(BASE_URL, params={
                 "method": "chart.gettopartists",
@@ -48,46 +52,71 @@ def fetch_top_artists(write_to_file=False):
             })
             response.raise_for_status()
             data = response.json()
-            for artist in data.get("artists", {}).get("artist", []):
+            fetched_artists = data.get("artists", {}).get("artist", [])
+
+            if not fetched_artists:
+                print(f"[LASTFM] No more artists returned at page {page}. Stopping.")
+                break
+
+            for artist in fetched_artists:
                 key = normalize_name(artist["name"])
                 if key not in all_artists:
                     all_artists[key] = {
+                        "id": None,
                         "name": artist["name"],
-                        "mbid": artist.get("mbid"),
-                        "url": artist.get("url")
+                        "lastfmMBID": artist.get("mbid"),
+                        "spotifyId": None,
+                        "spotifyUrl": artist.get("url"),
+                        "genres": [],
+                        "popularity": None,
+                        "userTags": [],
+                        "relatedArtists": [],
+                        "imageUrl": None,
+                        "color": None,
+                        "x": None,
+                        "y": None,
+                        "rank": None
                     }
-            print(f"[LASTFM] Fetched page {page} with {len(data.get('artists', {}).get('artist', []))} artists")
+
+                if len(all_artists) >= max_artists:
+                    break
+
+            print(f"[LASTFM] Fetched page {page} with {len(fetched_artists)} artists (total unique: {len(all_artists)})")
+
+            page += 1
+
         except Exception as e:
             print(f"[LASTFM] Failed to fetch top artists page {page}: {e}")
-
-    all_values = list(all_artists.values())
-    if write_to_file:
-        with open(top_artists_path, "w", encoding="utf-8") as f:
-            json.dump(all_values, f, indent=2)
-        print(f"Saved {len(all_artists)} artists to lastfmTopArtists.json")
-
-    return all_values
-
-def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=False):
-    if top_artists is None and write_to_file is False:
-        raise ValueError("[LASTFM] top_artists must be provided when not using temp files.")
-    elif top_artists is None and write_to_file is True:
-        with open(top_artists_path, "r", encoding="utf-8") as f:
-            top_artists = json.load(f)
-
-    if genre_map is None:
-        with open(genre_map_path, "r", encoding="utf-8") as f:
-            genre_map = json.load(f)
-
-    seen = set()
-    results = []
-    i = 1
-
-    for artist in top_artists:
-        if i > MAX_ARTIST_LOOKUP:
             break
 
-        name = artist["name"]
+    base_artists = [ArtistNode(**a) for a in all_artists.values()]
+
+    # if write_to_file:
+    #     with open(top_artists_path, "w", encoding="utf-8") as f:
+    #         json.dump([a.to_dict() for a in base_artists], f, indent=2)
+    #     print(f"[LASTFM] Saved {len(base_artists)} artists to lastfmTopArtists.json")
+
+    return base_artists
+
+
+def fetch_artist_details(
+    artists: List[ArtistNode],
+    genre_map=None,
+    write_to_file=False
+) -> List[ArtistNode]:
+    if artists is None and not write_to_file:
+        raise ValueError("[LASTFM] artists must be provided when not using temp files.")
+    elif artists is None and write_to_file:
+        with open(top_artists_path, "r", encoding="utf-8") as f:
+            artist_dicts = json.load(f)
+            artists = [ArtistNode(**a) for a in artist_dicts]
+
+    seen = set()
+    i = 1
+
+    for artist in artists:
+
+        name = artist.name
         norm_name = normalize_name(name)
         if norm_name in seen:
             continue
@@ -107,31 +136,27 @@ def fetch_artist_details(top_artists=None, genre_map=None, write_to_file=False):
                 print(f"[LASTFM] No artist data for {name}")
                 continue
 
-            tags = [tag["name"].lower() for tag in data.get("tags", {}).get("tag", [])]
-            filtered_tags = [tag for tag in tags if tag in genre_map]
-
+            # Update the existing artist object
             similar = get_similar_artists(name)
 
             images = data.get("image", [])
             image_url = next((img["#text"] for img in images if img.get("size") == "extralarge"), None)
 
-            results.append({
-                "name": data["name"],
-                "mbid": data.get("mbid"),
-                "url": data.get("url"),
-                "genres": filtered_tags,
-                "similar": similar,
-                "imageUrl": image_url
-            })
+            artist.lastfmMBID = data.get("mbid") or artist.lastfmMBID
+            artist.imageUrl = artist.imageUrl or image_url
+            artist.append_genres(data.get("tags", {}).get("tag", []))
+            artist.relatedArtists = similar or artist.relatedArtists
 
-            print(f"({i}/{MAX_ARTIST_LOOKUP}) Processed: {name} ({', '.join(filtered_tags)})")
+            tags_list = [tag["name"] for tag in data.get("tags", {}).get("tag", []) if tag.get("name")]
+            print(f"[LASTFM] ({i}/{len(artists)}) Processed: {name} ({', '.join(tags_list)})")
             i += 1
+
         except Exception as e:
             print(f"[LASTFM] Failed to fetch details for {name}: {e}")
 
-    if write_to_file:
-        with open(detailed_artists_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
-        print(f"Saved enriched artist data to lastfmArtists.json")
+    # if write_to_file:
+    #     with open(detailed_artists_path, "w", encoding="utf-8") as f:
+    #         json.dump([a.to_dict() for a in artists], f, indent=2)
+    #     print(f"[LASTFM] Saved enriched artist data to lastfmArtists.json")
 
-    return results
+    return artists

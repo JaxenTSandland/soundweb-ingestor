@@ -1,8 +1,12 @@
 import os
 import json
 import time
+from typing import List
+
 import requests
 from dotenv import load_dotenv
+
+from model.artist_node import ArtistNode
 
 load_dotenv()
 
@@ -43,25 +47,26 @@ def fetch_with_retry(url, retries=MAX_RETRIES, delay_ms=DELAY_MS):
                 print(f"[MUSICBRAINZ] Failed after {retries} attempts: {e}")
                 return None
 
-def fetch_artist_genre_data(write_to_file=True, top_artists=None):
-    if top_artists is None and write_to_file is False:
-        raise ValueError("[MUSICBRAINZ] top_artists cannot be None")
-    elif top_artists is None and write_to_file is True:
+def fetch_artist_genre_data(
+    artists: List[ArtistNode],
+    write_to_file=False
+) -> List[ArtistNode]:
+    if artists is None and not write_to_file:
+        raise ValueError("[MUSICBRAINZ] artists cannot be None")
+    elif artists is None and write_to_file:
         with open(top_artists_path, "r", encoding="utf-8") as f:
-            top_artists = json.load(f)
+            artist_dicts = json.load(f)
+            artists = [ArtistNode(**a) for a in artist_dicts]
 
-    with open(genre_map_path, "r", encoding="utf-8") as f:
-        genre_map = json.load(f)
 
-    results = []
     seen = set()
     i = 1
 
-    for artist in top_artists:
+    for artist in artists:
         if i > MAX_ARTIST_COUNT:
             break
 
-        name = artist["name"]
+        name = artist.name
         norm_name = normalize_name(name)
         if norm_name in seen:
             continue
@@ -75,23 +80,16 @@ def fetch_artist_genre_data(write_to_file=True, top_artists=None):
             continue
 
         artist_data = data["artists"][0]
-        tags = [
-            tag["name"].lower()
-            for tag in artist_data.get("tags", [])
-            if tag["name"].lower() in genre_map
-        ]
 
-        results.append({
-            "name": artist_data["name"],
-            "mbid": artist_data["id"],
-            "genres": tags
-        })
-
-        print(f"[MUSICBRAINZ] ({i}) Processed: {artist_data['name']} ({', '.join(tags)})")
+        artist.append_genres(artist_data.get("tags", []))
+        if not artist.lastfmMBID:
+            artist.lastfmMBID = artist_data.get("id")
+        tags_list = [tag.get("name", "") for tag in artist_data.get('tags', [])]
+        print(f"[MUSICBRAINZ] ({i}/{len(artists)}) Processed: {artist.name} ({', '.join(tags_list)})")
         i += 1
 
-    if write_to_file:
-        with open(musicbrainz_output_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2)
+    # if write_to_file:
+    #     with open(musicbrainz_output_path, "w", encoding="utf-8") as f:
+    #         json.dump([a.to_dict() for a in artists], f, indent=2)
 
-    return results
+    return artists

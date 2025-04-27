@@ -34,7 +34,7 @@ def update_neo4j_metadata(session, name="lastSync"):
         timestamp=now_iso
     )
 
-def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=False):
+def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=False, add_top_artist_label=True):
     if artist_data is None and write_to_file is False:
         raise ValueError('[NEO4J] artist_data cannot be None')
     elif artist_data is None and write_to_file is True:
@@ -47,60 +47,65 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
     try:
         print("[NEO4J] Starting export process...")
 
-        # Get existing TopArtist node IDs
-        existing_ids_result = session.run("MATCH (a:Artist:TopArtist) RETURN a.id AS id")
-        existing_top_artist_ids = {record["id"] for record in existing_ids_result}
-        new_top_artist_ids = {artist.id for artist in artist_data}
+        if add_top_artist_label:
+            # Clean up old top artists
+            existing_ids_result = session.run("MATCH (a:Artist:TopArtist) RETURN a.id AS id")
+            existing_top_artist_ids = {record["id"] for record in existing_ids_result}
+            new_top_artist_ids = {artist.id for artist in artist_data}
 
-        print(f"[NEO4J] Found {len(existing_top_artist_ids)} existing top artists in database.")
-        print(f"[NEO4J] Preparing to sync {len(new_top_artist_ids)} new top artists.")
+            print(f"[NEO4J] Found {len(existing_top_artist_ids)} existing top artists in database.")
+            print(f"[NEO4J] Preparing to sync {len(new_top_artist_ids)} new top artists.")
 
-        # Handle old TopArtists
-        stale_ids = existing_top_artist_ids - new_top_artist_ids
-        print(f"[NEO4J] Found {len(stale_ids)} stale top artists to clean up.")
+            stale_ids = existing_top_artist_ids - new_top_artist_ids
+            print(f"[NEO4J] Found {len(stale_ids)} stale top artists to clean up.")
 
-        for stale_id in stale_ids:
-            result = session.run(
-                "MATCH (a:Artist:TopArtist {id: $id}) RETURN a.userTags AS userTags",
-                {"id": stale_id}
+            for stale_id in stale_ids:
+                result = session.run(
+                    "MATCH (a:Artist:TopArtist {id: $id}) RETURN a.userTags AS userTags",
+                    {"id": stale_id}
+                )
+                record = result.single()
+                existing_user_tags = record["userTags"] if record and record["userTags"] else []
+
+                if existing_user_tags:
+                    print(f"[NEO4J] Preserving user-favorited artist {stale_id}, removing TopArtist label.")
+                    session.run(
+                        """
+                        MATCH (a:Artist:TopArtist {id: $id})
+                        REMOVE a:TopArtist
+                        """,
+                        {"id": stale_id}
+                    )
+                else:
+                    print(f"[NEO4J] Deleting stale artist {stale_id} (no user favorites).")
+                    session.run(
+                        """
+                        MATCH (a:Artist:TopArtist {id: $id})
+                        DETACH DELETE a
+                        """,
+                        {"id": stale_id}
+                    )
+
+            print(f"[NEO4J] Finished cleaning up stale top artists.")
+
+            print("[NEO4J] Deleting old RELATED_TO links between TopArtists...")
+            session.run(
+                """
+                MATCH (a:Artist:TopArtist)-[r:RELATED_TO]-(b:Artist:TopArtist)
+                DELETE r
+                """
             )
-            record = result.single()
-            existing_user_tags = record["userTags"] if record and record["userTags"] else []
+            print("[NEO4J] Old TopArtist relationships deleted.")
 
-            if existing_user_tags:
-                print(f"[NEO4J] Preserving user-favorited artist {stale_id}, removing TopArtist label.")
-                session.run(
-                    """
-                    MATCH (a:Artist:TopArtist {id: $id})
-                    REMOVE a:TopArtist
-                    """,
-                    {"id": stale_id}
-                )
-            else:
-                print(f"[NEO4J] Deleting stale artist {stale_id} (no user favorites).")
-                session.run(
-                    """
-                    MATCH (a:Artist:TopArtist {id: $id})
-                    DETACH DELETE a
-                    """,
-                    {"id": stale_id}
-                )
+            update_neo4j_metadata(session)
+            print("[NEO4J] Metadata (lastSync) updated.")
 
-        print(f"[NEO4J] Finished cleaning up stale top artists.")
-
-        # Delete old RELATED_TO links between TopArtists
-        print("[NEO4J] Deleting old RELATED_TO links between TopArtists...")
-        session.run(
-            """
-            MATCH (a:Artist:TopArtist)-[r:RELATED_TO]-(b:Artist:TopArtist)
-            DELETE r
-            """
-        )
-        print("[NEO4J] Old TopArtist relationships deleted.")
-
-        # Now upsert new top artists
-        print("[NEO4J] Inserting or updating top artists...")
+        # Insert new/upsert artist nodes
+        print("[NEO4J] Inserting or updating artists...")
         for artist in artist_data:
+            if artist.id is None:
+                continue
+
             result = session.run(
                 "MATCH (a:Artist {id: $id}) RETURN a.userTags AS userTags",
                 {"id": artist.id}
@@ -111,37 +116,69 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
             data = artist.to_dict()
             data["userTags"] = existing_user_tags
 
+            set_clauses = [
+                "a.name = $name",
+                "a.popularity = $popularity",
+                "a.spotifyId = $spotifyId",
+                "a.spotifyUrl = $spotifyUrl",
+                "a.lastfmMBID = $lastfmMBID",
+                "a.imageUrl = $imageUrl",
+                "a.genres = $genres",
+                "a.x = $x",
+                "a.y = $y",
+                "a.color = $color",
+                "a.userTags = $userTags"
+            ]
+
+            if add_top_artist_label:
+                set_clauses.insert(0, "a:TopArtist")
+
             session.run(
-                """
-                MERGE (a:Artist {id: $id})
-                SET a:TopArtist,
-                    a.name = $name,
-                    a.popularity = $popularity,
-                    a.spotifyId = $spotifyId,
-                    a.spotifyUrl = $spotifyUrl,
-                    a.lastfmMBID = $lastfmMBID,
-                    a.imageUrl = $imageUrl,
-                    a.genres = $genres,
-                    a.x = $x,
-                    a.y = $y,
-                    a.color = $color,
-                    a.userTags = $userTags
+                f"""
+                MERGE (a:Artist {{id: $id}})
+                SET {', '.join(set_clauses)}
                 """,
                 data
             )
-        print(f"[NEO4J] Finished upserting {len(artist_data)} top artists.")
+
+        print(f"[NEO4J] Finished upserting {len(artist_data)} artists.")
 
         # Create new RELATED_TO relationships
         print("[NEO4J] Creating new RELATED_TO relationships...")
-        name_to_id = {normalize_name(a.name): a.id for a in artist_data}
+        local_name_to_id = {normalize_name(a.name): a.id for a in artist_data}
+
         created_links = set()
 
         for artist in artist_data:
             from_id = artist.id
-            for related in artist.relatedArtists or []:
-                to_id = name_to_id.get(normalize_name(related))
-                if not to_id or from_id == to_id:
+            for related_name in artist.relatedArtists or []:
+                if not related_name:
                     continue
+
+                normalized_related = normalize_name(related_name)
+
+                # First check in local imported artists
+                to_id = local_name_to_id.get(normalized_related)
+
+                if not to_id:
+                    # Not found locally, check Neo4j
+                    result = session.run(
+                        """
+                        MATCH (target:Artist)
+                        WHERE toLower(REPLACE(target.name, ' ', '')) = $normalizedName
+                        RETURN target.id AS id
+                        """,
+                        {"normalizedName": normalized_related}
+                    )
+                    record = result.single()
+                    if not record:
+                        # Related artist not found in db either
+                        continue
+                    to_id = record["id"]
+
+                if from_id == to_id:
+                    continue
+
                 id_pair = tuple(sorted([from_id, to_id]))
                 if id_pair in created_links:
                     continue
@@ -158,10 +195,7 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
 
         print(f"[NEO4J] Created {len(created_links)} new relationships.")
 
-        update_neo4j_metadata(session)
-        print("[NEO4J] Metadata (lastSync) updated.")
-
-        print(f"[NEO4J] Finished syncing {len(artist_data)} top artists and {len(created_links)} relationships to Neo4j.")
+        print(f"[NEO4J] Finished syncing {len(artist_data)} artists and {len(created_links)} relationships to Neo4j.")
 
     except Exception as e:
         print(f"[NEO4J] Error exporting to Neo4j: {e}")

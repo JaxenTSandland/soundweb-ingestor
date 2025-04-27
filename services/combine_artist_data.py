@@ -21,7 +21,7 @@ def normalize_name(name):
 
 
 
-def combine_all_artist_data(
+def combine_top_artist_data(
     write_to_file=False,
     lastfm_artists=None,
     spotify_artists=None,
@@ -45,6 +45,7 @@ def combine_all_artist_data(
 
     seen = set()
     merged: List[ArtistNode] = []
+    rankScore = 1
 
     for spotify in spotify_artists:
         norm_name = normalize_name(spotify["name"])
@@ -104,13 +105,58 @@ def combine_all_artist_data(
             color=color,
             x=x,
             y=y,
-            userTags=[]
+            userTags=[],
+            rank=rankScore
         )
-
+        rankScore += 1
         merged.append(artist_node)
 
-    if write_to_file:
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump([artist.to_dict() for artist in merged], f, indent=2)
+    # if write_to_file:
+    #     with open(output_path, "w", encoding="utf-8") as f:
+    #         json.dump([artist.to_dict() for artist in merged], f, indent=2)
 
     return merged
+
+
+def implement_genre_data(artists: List[ArtistNode], top_artists: bool = False) -> List[ArtistNode]:
+    with open(genre_map_path, "r", encoding="utf-8") as f:
+        genre_map = json.load(f)
+
+    finalized = []
+    rankScore = 1
+
+    for artist in artists:
+        if artist.id is None:
+            continue
+        if not artist.genres:
+            continue
+        else:
+            artist.finalize_genres()
+
+        # Choose color based on top genre
+        top_genre = artist.genres[0]
+        artist.color = genre_map.get(top_genre, {}).get("color", "#cccccc")
+
+        # If no x/y coordinates yet, calculate them
+        if artist.x is None or artist.y is None:
+            x_total = 0
+            y_total = 0
+            weight_total = 0
+            for idx, g in enumerate(artist.genres[:10]):
+                g_data = genre_map.get(g)
+                if g_data and "x" in g_data and "y" in g_data:
+                    weight = 1 / (idx + 1)
+                    x_total += g_data["x"] * weight
+                    y_total += g_data["y"] * weight
+                    weight_total += weight
+
+            if weight_total:
+                artist.x = x_total / weight_total
+                artist.y = y_total / weight_total
+
+        artist.rank = rankScore if top_artists else None
+        rankScore += 1
+
+        finalized.append(artist)
+
+    return finalized
