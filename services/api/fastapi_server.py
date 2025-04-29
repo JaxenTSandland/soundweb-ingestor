@@ -1,3 +1,5 @@
+print("✅ fastapi_server.py has been loaded")
+
 from fastapi import FastAPI
 
 app = FastAPI()
