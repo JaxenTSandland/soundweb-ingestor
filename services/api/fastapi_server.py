@@ -1,6 +1,8 @@
-print("✅ fastapi_server.py has been loaded")
+import uvicorn
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
-from fastapi import FastAPI
+from main import generate_custom_artist_data
 
 app = FastAPI()
 
@@ -8,6 +10,17 @@ app = FastAPI()
 def api_test():
     return {"success": True, "message": "Ingestor API is running."}
 
-@app.get("/api/health")
-def health_check():
-    return {"status": "ok"}
+class CustomArtistRequest(BaseModel):
+    name: str
+    spotify_id: str
+
+@app.post("/api/custom-artist")
+def ingest_custom_artist(request: CustomArtistRequest):
+    try:
+        result = generate_custom_artist_data(
+            name=request.name,
+            spotify_id=request.spotify_id
+        )
+        return {"success": True, "message": f"Custom artist {request.name} ingested successfully.", "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

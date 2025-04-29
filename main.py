@@ -125,7 +125,8 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
     return {
         "status": "success",
         "artistName": name,
-        "spotifyId": spotify_id
+        "spotifyId": spotify_id,
+        "artistNode": artists[0],
     }
 
 if __name__ == "__main__":
