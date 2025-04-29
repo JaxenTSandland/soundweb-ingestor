@@ -15,6 +15,17 @@ COPY . .
 
 EXPOSE 8000
 
-# Default behavior is to run the FastAPI server, but allow override
-ENTRYPOINT ["sh", "-c"]
-CMD ["uvicorn services.api.fastapi_server:app --host 0.0.0.0 --port 8000"]
+# Default APP_MODE is "server"
+ENV APP_MODE=server
+
+# At container start, decide what to run based on APP_MODE
+ENTRYPOINT ["sh", "-c", "\
+    echo Running container in APP_MODE=$APP_MODE; \
+    if [ \"$APP_MODE\" = \"server\" ]; then \
+        uvicorn services.api.fastapi_server:app --host 0.0.0.0 --port 8000; \
+    elif [ \"$APP_MODE\" = \"cron\" ]; then \
+        python main.py; \
+    else \
+        echo '❌ Unknown APP_MODE value: $APP_MODE'; exit 1; \
+    fi \
+"]
