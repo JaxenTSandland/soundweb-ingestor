@@ -14,10 +14,11 @@ class CustomArtistRequest(BaseModel):
     name: str
     spotify_id: str
 
-@app.post("/api/custom-artist")
+@app.post("/api/add-custom-artist")
 def ingest_custom_artist(request: CustomArtistRequest):
     try:
         result = generate_custom_artist_data(
+            user_tag=request.user_tag,
             name=request.name,
             spotify_id=request.spotify_id
         )

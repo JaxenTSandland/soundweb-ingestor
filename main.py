@@ -1,5 +1,8 @@
 import os
 
+import neo4j
+
+from services.artist_lookup import get_existing_artist_by_spotify_id
 from services.lastfm import (
     fetch_top_artists,
     fetch_artist_details,
@@ -16,6 +19,11 @@ from utils.checkpoint import save_checkpoint, load_checkpoint
 ENV = os.getenv("ENV", "production")
 LOCAL_ENV = ENV == "local"
 WRITE_TO_FILE = LOCAL_ENV
+
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+NEO4J_ARTISTS_DB = os.getenv("NEO4J_ARTISTS_DB")
 
 RELOAD_LASTFM = True if LOCAL_ENV else True
 RELOAD_MUSICBRAINZ = True if LOCAL_ENV else True
@@ -86,48 +94,79 @@ def generate_top_artist_data(max_artists:int=1000):
         export_genres_to_mysql()
 
 
-
-def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: str = None):
+def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: str = None, user_tag: str = None):
     if not spotify_id and not name:
-        raise ValueError("[MAIN] spotify_id or artist name is required for custom artist ingestion.")
+        raise ValueError("Must provide either name or spotify_id")
 
-    print(f"[MAIN] Starting custom artist ingestion for {name} (SpotifyID: {spotify_id})...")
+    driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    session = driver.session(database=NEO4J_ARTISTS_DB)
 
-    artist = ArtistNode(
-        id=spotify_id,
-        name=name,
-        spotifyId=spotify_id,
-        lastfmMBID=mbid,
-        genres=[],
-        userTags=[],
-        relatedArtists=[],
-    )
+    try:
+        existing = get_existing_artist_by_spotify_id(session, spotify_id)
 
-    artists = [artist]
+        if existing:
+            artist_props, user_tags, is_top = existing
+            print(f"[CUSTOM] Artist {spotify_id} already exists.")
 
-    print("[MAIN] Fetching Spotify details...")
-    artists = fetch_spotify_data(artists, write_to_file=False)
+            if user_tag and user_tag not in user_tags:
+                user_tags.append(user_tag)
+                session.run(
+                    """
+                    MATCH (a:Artist {spotifyId: $spotifyId})
+                    SET a.userTags = $userTags
+                    """,
+                    {"spotifyId": spotify_id, "userTags": user_tags}
+                )
+                print(f"[CUSTOM] Added userTag {user_tag} to artist.")
 
-    print("[MAIN] Fetching Last.fm details...")
-    artists = fetch_artist_details(artists, write_to_file=False)
+            if is_top:
+                print(f"[CUSTOM] Skipping re-fetch: Artist is a TopArtist.")
+                return {
+                    "status": "alreadyExists",
+                    "spotifyId": spotify_id,
+                    "userTagAdded": user_tag in user_tags
+                }
 
-    print("\n[MAIN] Fetching genre data from MusicBrainz...")
-    artists = fetch_artist_genre_data(artists, write_to_file=False)
+        print(f"[MAIN] Starting custom artist ingestion for {name} (SpotifyID: {spotify_id})...")
 
-    print("[MAIN] Combining final data...")
-    artists = implement_genre_data(artists, top_artists=False)
+        artist = ArtistNode(
+            id=spotify_id,
+            name=name,
+            spotifyId=spotify_id,
+            lastfmMBID=mbid,
+            genres=[],
+            userTags=[user_id],
+            relatedArtists=[],
+        )
 
-    print("[MAIN] Exporting to Neo4j...")
-    export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+        artists = [artist]
 
-    print(f"[MAIN] Finished ingesting {name}.")
+        print("[MAIN] Fetching Spotify details...")
+        artists = fetch_spotify_data(artists, write_to_file=False)
 
-    return {
-        "status": "success",
-        "artistName": name,
-        "spotifyId": spotify_id,
-        "artistNode": artists[0],
-    }
+        print("[MAIN] Fetching Last.fm details...")
+        artists = fetch_artist_details(artists, write_to_file=False)
+
+        print("\n[MAIN] Fetching genre data from MusicBrainz...")
+        artists = fetch_artist_genre_data(artists, write_to_file=False)
+
+        print("[MAIN] Combining final data...")
+        artists = implement_genre_data(artists, top_artists=False)
+
+        print("[MAIN] Exporting to Neo4j...")
+        export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+
+        print(f"[MAIN] Finished ingesting {name}.")
+
+        return {
+            "status": "success",
+            "artistName": name,
+            "spotifyId": spotify_id,
+            "artistNode": artists[0],
+        }
+    finally:
+        session.close()
+        driver.close()
 
 if __name__ == "__main__":
     main()

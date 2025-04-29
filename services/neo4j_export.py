@@ -114,7 +114,12 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
             existing_user_tags = record["userTags"] if record and record["userTags"] else []
 
             data = artist.to_dict()
-            data["userTags"] = existing_user_tags
+
+            # Merge input tags + existing tags
+            input_tags = set(data.get("userTags", []))
+            existing_tags = set(existing_user_tags)
+            merged_tags = list(input_tags.union(existing_tags))
+            data["userTags"] = merged_tags
 
             set_clauses = [
                 "a.name = $name",
