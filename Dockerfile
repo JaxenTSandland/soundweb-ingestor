@@ -15,4 +15,6 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["uvicorn", "services.api.fastapi_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default behavior is to run the FastAPI server, but allow override
+ENTRYPOINT ["sh", "-c"]
+CMD ["uvicorn services.api.fastapi_server:app --host 0.0.0.0 --port 8000"]

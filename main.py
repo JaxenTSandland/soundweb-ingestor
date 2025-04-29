@@ -34,8 +34,9 @@ EXPORT_TO_MYSQL = True if LOCAL_ENV else True
 
 def main():
     # generate_custom_artist_data(
-    #     name="Naethan Apollo",
-    #     spotify_id=None
+    #     user_tag="7717",
+    #     name="Love Spells",
+    #     spotify_id="5iiqhuffUTPEOjAUDj19IW"
     # )
     generate_top_artist_data()
 
