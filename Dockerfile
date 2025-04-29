@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# Set a working directory
+# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -14,10 +14,10 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt --verbose
 
-# Copy the rest of your app code
+# Copy the rest of the code
 COPY . .
 
-# Expose port (optional but good practice)
+# Expose port 8000 for Railway to route traffic
 EXPOSE 8000
 
 # Run your FastAPI app
