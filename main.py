@@ -135,7 +135,7 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
             spotifyId=spotify_id,
             lastfmMBID=mbid,
             genres=[],
-            userTags=[user_id],
+            userTags=[user_tag],
             relatedArtists=[],
         )
 
