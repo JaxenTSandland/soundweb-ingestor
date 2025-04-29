@@ -10,15 +10,17 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements first
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt --verbose
 
-# Copy the rest of the code
+# Install Python dependencies
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Now copy the rest of your application
 COPY . .
 
-# Expose port 8000 for Railway to route traffic
+# Expose the port Uvicorn will run on
 EXPOSE 8000
 
-# Run your FastAPI app
+# Final command to start FastAPI app
 CMD ["uvicorn", "services.api.fastapi_server:app", "--host", "0.0.0.0", "--port", "8000"]
