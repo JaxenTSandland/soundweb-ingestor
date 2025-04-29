@@ -11,6 +11,7 @@ def api_test():
     return {"success": True, "message": "Ingestor API is running."}
 
 class CustomArtistRequest(BaseModel):
+    user_tag: str
     name: str
     spotify_id: str
 
