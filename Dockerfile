@@ -24,4 +24,4 @@ EXPOSE 8000
 
 # Final command to start FastAPI app
 RUN echo "Listing project files:" && find . -print
-CMD ["uvicorn", "services.api.fastapi_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
+ENTRYPOINT ["uvicorn", "services.api.fastapi_server:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "debug"]
