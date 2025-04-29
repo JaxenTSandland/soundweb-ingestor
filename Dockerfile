@@ -23,4 +23,5 @@ COPY . .
 EXPOSE 8000
 
 # Final command to start FastAPI app
-CMD ["sh", "-c", "uvicorn services.api.fastapi_server:app --host 0.0.0.0 --port ${PORT:-8000}"]
+RUN echo "Listing project files:" && find . -print
+CMD ["sh", "-c", "ls -R /app && uvicorn services.api.fastapi_server:app --host 0.0.0.0 --port ${PORT:-8000}"]
