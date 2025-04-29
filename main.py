@@ -26,7 +26,7 @@ EXPORT_TO_MYSQL = True if LOCAL_ENV else True
 
 def main():
     # generate_custom_artist_data(
-    #     name="La la land",
+    #     name="Naethan Apollo",
     #     spotify_id=None
     # )
     generate_top_artist_data()
@@ -93,7 +93,6 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
 
     print(f"[MAIN] Starting custom artist ingestion for {name} (SpotifyID: {spotify_id})...")
 
-
     artist = ArtistNode(
         id=spotify_id,
         name=name,
@@ -105,7 +104,6 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
     )
 
     artists = [artist]
-
 
     print("[MAIN] Fetching Spotify details...")
     artists = fetch_spotify_data(artists, write_to_file=False)
@@ -119,13 +117,16 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
     print("[MAIN] Combining final data...")
     artists = implement_genre_data(artists, top_artists=False)
 
-    #print(artists)
-
     print("[MAIN] Exporting to Neo4j...")
     export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
 
     print(f"[MAIN] Finished ingesting {name}.")
 
+    return {
+        "status": "success",
+        "artistName": name,
+        "spotifyId": spotify_id
+    }
 
 if __name__ == "__main__":
     main()
