@@ -90,9 +90,9 @@ def generate_top_artist_data(max_artists:int=1000):
         print("\n[MAIN] Exporting artists to Neo4j...")
         export_artist_data_to_neo4j(artists, write_to_file=WRITE_TO_FILE, add_top_artist_label=True)
 
-    if EXPORT_TO_MYSQL:
-        print("\n[MAIN] Exporting genres to MySQL...")
-        export_genres_to_mysql()
+    # if EXPORT_TO_MYSQL:
+    #     print("\n[MAIN] Exporting genres to MySQL...")
+    #     export_genres_to_mysql()
 
 
 def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: str = None, user_tag: str = None):
