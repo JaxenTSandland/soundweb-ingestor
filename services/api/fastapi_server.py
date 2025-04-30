@@ -23,6 +23,6 @@ def ingest_custom_artist(request: CustomArtistRequest):
             name=request.name,
             spotify_id=request.spotify_id
         )
-        return {"success": True, "message": f"Custom artist {request.name} ingested successfully.", "data": result}
+        return {"success": True, "message": f"Custom artist {result.data.artistNode.name} ingested successfully.", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
