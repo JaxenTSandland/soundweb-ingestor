@@ -1,8 +1,8 @@
 import json
 import os
 from typing import List, Optional, ClassVar
-from dataclasses import dataclass, asdict
-
+from dataclasses import dataclass, asdict, field
+from datetime import datetime, timezone
 
 @dataclass
 class ArtistNode:
@@ -20,6 +20,7 @@ class ArtistNode:
     userTags: Optional[List[str]] = None
     relatedArtists: Optional[List[str]] = None
     rank: Optional[int] = None
+    lastUpdated: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
     genre_map: ClassVar[dict] = {}
     genre_map_path: ClassVar[Optional[str]] = "../data/genreMap.json"
@@ -58,7 +59,6 @@ class ArtistNode:
 
         self.genres += cleaned
 
-
     def finalize_genres(self):
         if not self.genres:
             return
@@ -76,7 +76,6 @@ class ArtistNode:
         )
 
         self.genres = unique_genres
-
 
     def to_dict(self):
         return asdict(self)

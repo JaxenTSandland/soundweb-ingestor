@@ -120,6 +120,7 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
             existing_tags = set(existing_user_tags)
             merged_tags = list(input_tags.union(existing_tags))
             data["userTags"] = merged_tags
+            data["lastUpdated"] = datetime.now(timezone.utc).isoformat()
 
             set_clauses = [
                 "a.name = $name",
@@ -132,7 +133,8 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
                 "a.x = $x",
                 "a.y = $y",
                 "a.color = $color",
-                "a.userTags = $userTags"
+                "a.userTags = $userTags",
+                "a.lastUpdated = $lastUpdated"
             ]
 
             if add_top_artist_label:
