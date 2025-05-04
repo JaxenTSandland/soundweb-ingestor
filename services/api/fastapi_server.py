@@ -33,11 +33,22 @@ def ingest_custom_artist(request: CustomArtistRequest):
             user_tag=request.user_tag,
             spotify_id=request.spotify_id
         )
-        return {
-            "success": True,
-            "message": f"Custom artist {result['artistNode'].name} ingested successfully.",
-            "data": result
-        }
+
+        if result["status"] == "success":
+            return {
+                "success": True,
+                "message": f"Custom artist '{result['artistName'] or request.spotify_id}' ingested successfully.",
+                "data": result
+            }
+        elif result["status"] == "alreadyExists":
+            return {
+                "success": True,
+                "message": f"Artist '{request.spotify_id}' already exists. User tag {'added' if result['userTagAdded'] else 'already present'}.",
+                "data": result
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Unexpected result status.")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -110,6 +110,7 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
             artist_props, user_tags, is_top = existing
             print(f"[CUSTOM] Artist {spotify_id} already exists.")
 
+            user_tag_added = False
             if user_tag and user_tag not in user_tags:
                 user_tags.append(user_tag)
                 session.run(
@@ -120,16 +121,18 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
                     {"spotifyId": spotify_id, "userTags": user_tags}
                 )
                 print(f"[CUSTOM] Added userTag {user_tag} to artist.")
+                user_tag_added = True
 
             if is_top:
                 print(f"[CUSTOM] Skipping re-fetch: Artist is a TopArtist.")
                 return {
                     "status": "alreadyExists",
                     "spotifyId": spotify_id,
-                    "userTagAdded": user_tag in user_tags
+                    "userTagAdded": user_tag_added,
+                    "artistNode": None
                 }
 
-        print(f"[MAIN] Starting custom artist ingestion for SpotifyID:{spotify_id})...")
+        print(f"[MAIN] Starting custom artist ingestion for SpotifyID: {spotify_id}...")
 
         artist = ArtistNode(
             id=spotify_id,
@@ -149,7 +152,7 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         print("[MAIN] Fetching Last.fm details...")
         artists = fetch_artist_details(artists, write_to_file=False)
 
-        print("\n[MAIN] Fetching genre data from MusicBrainz...")
+        print("[MAIN] Fetching genre data from MusicBrainz...")
         artists = fetch_artist_genre_data(artists, write_to_file=False)
 
         print("[MAIN] Combining final data...")
@@ -158,14 +161,15 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         print("[MAIN] Exporting to Neo4j...")
         export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
 
-        print(f"[MAIN] Finished ingesting {artist.name}.")
+        print(f"[MAIN] Finished ingesting {artists[0].name}.")
 
         return {
             "status": "success",
-            "artistName": artist.name,
+            "artistName": artists[0].name,
             "spotifyId": spotify_id,
-            "artistNode": artists[0],
+            "artistNode": artists[0]
         }
+
     finally:
         session.close()
         driver.close()
