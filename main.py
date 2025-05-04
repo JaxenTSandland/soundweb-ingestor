@@ -1,4 +1,5 @@
 import os
+from typing import List
 
 import neo4j
 
@@ -95,9 +96,9 @@ def generate_top_artist_data(max_artists:int=1000):
     #     export_genres_to_mysql()
 
 
-def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: str = None, user_tag: str = None):
-    if not spotify_id and not name:
-        raise ValueError("Must provide either name or spotify_id")
+def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_tag: str = None):
+    if not spotify_id:
+        raise ValueError("Must provide spotify id")
 
     driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     session = driver.session(database=NEO4J_ARTISTS_DB)
@@ -128,11 +129,11 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
                     "userTagAdded": user_tag in user_tags
                 }
 
-        print(f"[MAIN] Starting custom artist ingestion for {name} (SpotifyID: {spotify_id})...")
+        print(f"[MAIN] Starting custom artist ingestion for SpotifyID:{spotify_id})...")
 
         artist = ArtistNode(
             id=spotify_id,
-            name=name,
+            name="",
             spotifyId=spotify_id,
             lastfmMBID=mbid,
             genres=[],
@@ -157,17 +158,42 @@ def generate_custom_artist_data(name: str = None, spotify_id: str = None, mbid: 
         print("[MAIN] Exporting to Neo4j...")
         export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
 
-        print(f"[MAIN] Finished ingesting {name}.")
+        print(f"[MAIN] Finished ingesting {artist.name}.")
 
         return {
             "status": "success",
-            "artistName": name,
+            "artistName": artist.name,
             "spotifyId": spotify_id,
             "artistNode": artists[0],
         }
     finally:
         session.close()
         driver.close()
+
+def get_custom_artists_by_user_tag(user_tag: str) -> List[str]:
+    driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    session = driver.session(database=NEO4J_ARTISTS_DB)
+    try:
+        result = session.run(
+            """
+            MATCH (a:Artist)
+            WHERE NOT a:TopArtist AND $userTag IN a.userTags
+            RETURN a.spotifyId AS spotifyId
+            """,
+            {"userTag": user_tag}
+        )
+        return [record["spotifyId"] for record in result if record["spotifyId"]]
+    finally:
+        session.close()
+        driver.close()
+
+def refresh_custom_artists_by_user_tag(user_tag: str):
+    spotify_ids = get_custom_artists_by_user_tag(user_tag)
+    results = []
+    for spotify_id in spotify_ids:
+        result = generate_custom_artist_data(spotify_id=spotify_id, user_tag=user_tag)
+        results.append(result)
+    return results
 
 if __name__ == "__main__":
     main()
