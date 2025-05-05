@@ -137,22 +137,21 @@ def implement_genre_data(artists: List[ArtistNode], top_artists: bool = False) -
         top_genre = artist.genres[0]
         artist.color = genre_map.get(top_genre, {}).get("color", "#cccccc")
 
-        # If no x/y coordinates yet, calculate them
-        if artist.x is None or artist.y is None:
-            x_total = 0
-            y_total = 0
-            weight_total = 0
-            for idx, g in enumerate(artist.genres[:10]):
-                g_data = genre_map.get(g)
-                if g_data and "x" in g_data and "y" in g_data:
-                    weight = 1 / (idx + 1)
-                    x_total += g_data["x"] * weight
-                    y_total += g_data["y"] * weight
-                    weight_total += weight
 
-            if weight_total:
-                artist.x = x_total / weight_total
-                artist.y = y_total / weight_total
+        x_total = 0
+        y_total = 0
+        weight_total = 0
+        for idx, g in enumerate(artist.genres[:10]):
+            g_data = genre_map.get(g)
+            if g_data and "x" in g_data and "y" in g_data:
+                weight = 1 / (idx + 1)
+                x_total += g_data["x"] * weight
+                y_total += g_data["y"] * weight
+                weight_total += weight
+
+        if weight_total:
+            artist.x = x_total / weight_total
+            artist.y = y_total / weight_total
 
         artist.rank = rankScore if top_artists else None
         rankScore += 1
