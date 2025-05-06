@@ -26,7 +26,7 @@ class CustomArtistRequest(BaseModel):
 class RefreshRequest(BaseModel):
     user_tag: str
 
-@app.post("/api/add-custom-artist")
+@app.post("/api/custom-artist")
 def ingest_custom_artist(request: CustomArtistRequest):
     try:
         result = generate_custom_artist_data(
