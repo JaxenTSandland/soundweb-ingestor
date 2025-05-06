@@ -37,12 +37,14 @@ def ingest_custom_artist(request: CustomArtistRequest):
         if result["status"] == "success":
             return {
                 "success": True,
+                "alreadyExists": False,
                 "message": f"Custom artist '{result['artistName'] or request.spotify_id}' ingested successfully.",
                 "data": result
             }
         elif result["status"] == "alreadyExists":
             return {
                 "success": True,
+                "alreadyExists": True,
                 "message": f"Artist '{request.spotify_id}' already exists. User tag {'added' if result['userTagAdded'] else 'already present'}.",
                 "data": result
             }
