@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from main import generate_custom_artist_data, refresh_custom_artists_by_user_tag
+from main import generate_custom_artist_data, refresh_custom_artists_by_user_tag, remove_user_tag_from_artist_node
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -24,6 +24,10 @@ class CustomArtistRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
+    user_tag: str
+
+class RemoveUserTagRequest(BaseModel):
+    spotify_id: str
     user_tag: str
 
 @app.post("/api/custom-artist")
@@ -66,5 +70,12 @@ def refresh_custom_artists(request: RefreshRequest):
             "message": f"Refreshed {len(results)} custom artists for user tag {user_tag}.",
             "refreshedArtists": [r["spotifyId"] for r in results]
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/remove-custom-artist-usertag")
+def remove_user_tag_from_artist(request: RemoveUserTagRequest):
+    try:
+        return remove_user_tag_from_artist_node(request.spotify_id, request.user_tag)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

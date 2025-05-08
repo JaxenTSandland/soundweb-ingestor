@@ -1,7 +1,9 @@
 import os
+from http.client import HTTPException
 from typing import List
 
 import neo4j
+from neo4j import Session
 
 from services.artist_lookup import get_existing_artist_by_spotify_id
 from services.lastfm import (
@@ -198,6 +200,58 @@ def refresh_custom_artists_by_user_tag(user_tag: str):
         result = generate_custom_artist_data(spotify_id=spotify_id, user_tag=user_tag)
         results.append(result)
     return results
+
+
+def remove_user_tag_from_artist_node(spotify_id: str, user_tag: str) -> dict:
+
+    driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    session = driver.session(database=NEO4J_ARTISTS_DB)
+
+    try :
+        result = session.run(
+        """
+        MATCH (a:Artist {spotifyId: $spotify_id})
+        RETURN a.userTags AS userTags
+        """,
+        {"spotify_id": spotify_id}
+        )
+        record = result.single()
+        if not record:
+            raise HTTPException(status_code=404, detail=f"Artist with spotifyId {spotify_id} not found.")
+
+        current_tags = record["userTags"] or []
+
+        if user_tag not in current_tags:
+            return {
+                "success": True,
+                "message": f"user_tag '{user_tag}' was not associated with artist '{spotify_id}'",
+                "userTagRemoved": False
+            }
+
+        updated_tags = [tag for tag in current_tags if tag != user_tag]
+
+        session.run(
+            """
+            MATCH (a:Artist {spotifyId: $spotify_id})
+            SET a.userTags = $updated_tags
+            """,
+            {
+                "spotify_id": spotify_id,
+                "updated_tags": updated_tags
+            }
+        )
+
+        return {
+            "success": True,
+            "message": f"Removed user_tag '{user_tag}' from artist '{spotify_id}'",
+            "userTagRemoved": True
+        }
+
+    finally:
+        session.close()
+        driver.close()
+
+
 
 if __name__ == "__main__":
     main()
