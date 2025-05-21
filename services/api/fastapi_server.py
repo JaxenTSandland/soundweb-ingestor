@@ -1,7 +1,14 @@
+import os
+from datetime import datetime, timezone
+from typing import List
+
+import neo4j
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from neo4j import Session
 from pydantic import BaseModel
-from main import generate_custom_artist_data, refresh_custom_artists_by_user_tag, remove_user_tag_from_artist_node
+from main import generate_custom_artist_data, refresh_custom_artists_by_user_tag, remove_user_tag_from_artist_node, \
+    ingest_artist_minimal
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -22,6 +29,9 @@ class CustomArtistRequest(BaseModel):
     user_tag: str
     spotify_id: str
 
+class BulkCustomArtistRequest(BaseModel):
+    user_tag: str
+    spotify_ids: List[str]
 
 class RefreshRequest(BaseModel):
     user_tag: str
@@ -29,6 +39,11 @@ class RefreshRequest(BaseModel):
 class RemoveUserTagRequest(BaseModel):
     spotify_id: str
     user_tag: str
+
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+NEO4J_ARTISTS_DB = os.getenv("NEO4J_ARTISTS_DB")
 
 @app.post("/api/custom-artist")
 def ingest_custom_artist(request: CustomArtistRequest):
@@ -58,6 +73,43 @@ def ingest_custom_artist(request: CustomArtistRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/custom-artist/bulk")
+def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
+    driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+    session = driver.session(database=NEO4J_ARTISTS_DB)
+
+    try:
+        # Fetch all existing artists that match incoming IDs
+        existing_map = get_existing_artists_metadata(session, request.spotify_ids)
+
+        def should_process(meta):
+            if not meta:
+                return True
+            if meta["isTopArtist"]:
+                return False
+            try:
+                last = datetime.fromisoformat(meta["lastUpdated"])
+                return (datetime.now(timezone.utc) - last).days > 90
+            except:
+                return True
+
+        ids_to_process = [
+            sid for sid in request.spotify_ids if should_process(existing_map.get(sid))
+        ]
+
+        for sid in ids_to_process:
+            ingest_artist_minimal(sid, request.user_tag, session)
+
+        return {
+            "success": True,
+            "processedCount": len(ids_to_process),
+            "skippedCount": len(request.spotify_ids) - len(ids_to_process)
+        }
+
+    finally:
+        session.close()
+        driver.close()
+
 @app.post("/api/refresh-custom-artists")
 def refresh_custom_artists(request: RefreshRequest):
     user_tag = request.user_tag
@@ -79,3 +131,23 @@ def remove_user_tag_from_artist(request: RemoveUserTagRequest):
         return remove_user_tag_from_artist_node(request.spotify_id, request.user_tag)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+
+def get_existing_artists_metadata(session: Session, spotify_ids: List[str]) -> dict:
+    result = session.run(
+        """
+        UNWIND $ids AS sid
+        MATCH (a:Artist {spotifyId: sid})
+        RETURN a.spotifyId AS spotifyId, a:TopArtist AS isTopArtist, a.lastUpdated AS lastUpdated
+        """,
+        {"ids": spotify_ids}
+    )
+
+    existing = {}
+    for record in result:
+        existing[record["spotifyId"]] = {
+            "isTopArtist": record.get("isTopArtist", False),
+            "lastUpdated": record.get("lastUpdated")
+        }
+    return existing

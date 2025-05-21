@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from http.client import HTTPException
 from typing import List
 
@@ -98,12 +99,17 @@ def generate_top_artist_data(max_artists:int=1000):
     #     export_genres_to_mysql()
 
 
-def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_tag: str = None):
+def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_tag: str = None, session = None):
     if not spotify_id:
         raise ValueError("Must provide spotify id")
 
-    driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
-    session = driver.session(database=NEO4J_ARTISTS_DB)
+    own_driver = None
+    own_session = False
+
+    if session is None:
+        own_driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        session = own_driver.session(database=NEO4J_ARTISTS_DB)
+        own_session = True
 
     try:
         existing = get_existing_artist_by_spotify_id(session, spotify_id)
@@ -111,6 +117,17 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         if existing:
             artist_props, user_tags, is_top = existing
             print(f"[CUSTOM] Artist {spotify_id} already exists.")
+
+            last_updated_str = artist_props.get("lastUpdated")
+            should_refresh = True
+
+            if last_updated_str:
+                try:
+                    last_updated = datetime.fromisoformat(last_updated_str)
+                    days_since_update = (datetime.now(timezone.utc) - last_updated).days
+                    should_refresh = days_since_update > 90
+                except Exception as e:
+                    print(f"[WARN] Could not parse lastUpdated: {e} (forcing refresh)")
 
             user_tag_added = False
             if user_tag and user_tag not in user_tags:
@@ -125,13 +142,34 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
                 print(f"[CUSTOM] Added userTag {user_tag} to artist.")
                 user_tag_added = True
 
-            if is_top:
-                print(f"[CUSTOM] Skipping re-fetch: Artist is a TopArtist.")
+            refresh_required = not existing or (not is_top and should_refresh)
+
+            if not refresh_required:
+                print(f"[CUSTOM] Skipping re-fetch: {'TopArtist' if is_top else 'Recently updated'}")
+
+                artist_node = ArtistNode(
+                    id=artist_props.get("id"),
+                    name=artist_props.get("name", ""),
+                    popularity=artist_props.get("popularity", 0),
+                    spotifyId=artist_props.get("spotifyId"),
+                    spotifyUrl=artist_props.get("spotifyUrl"),
+                    lastfmMBID=artist_props.get("lastfmMBID"),
+                    imageUrl=artist_props.get("imageUrl"),
+                    genres=artist_props.get("genres", []),
+                    x=artist_props.get("x"),
+                    y=artist_props.get("y"),
+                    color=artist_props.get("color"),
+                    userTags=user_tags,
+                    relatedArtists=artist_props.get("relatedArtists", []),
+                    rank=artist_props.get("rank", 0),
+                    lastUpdated=artist_props.get("lastUpdated")
+                )
+
                 return {
                     "status": "alreadyExists",
                     "spotifyId": spotify_id,
                     "userTagAdded": user_tag_added,
-                    "artistNode": None
+                    "artistNode": artist_node
                 }
 
         print(f"[MAIN] Starting custom artist ingestion for SpotifyID: {spotify_id}...")
@@ -173,8 +211,27 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         }
 
     finally:
-        session.close()
-        driver.close()
+        if own_session:
+            session.close()
+        if own_driver:
+            own_driver.close()
+
+def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session):
+    artist = ArtistNode(
+        id=spotify_id,
+        name="",
+        spotifyId=spotify_id,
+        userTags=[user_tag],
+        relatedArtists=[],
+        genres=[]
+    )
+
+    artists = [artist]
+    artists = fetch_spotify_data(artists, write_to_file=False)
+    artists = fetch_artist_details(artists, write_to_file=False)
+    artists = fetch_artist_genre_data(artists, write_to_file=False)
+    artists = implement_genre_data(artists, top_artists=False)
+    export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
 
 def get_custom_artists_by_user_tag(user_tag: str) -> List[str]:
     driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
