@@ -3,6 +3,8 @@ import json
 import mysql.connector
 from dotenv import load_dotenv
 
+from model.incomplete_artist import IncompleteArtist
+
 load_dotenv()
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -55,3 +57,30 @@ def export_genres_to_mysql(genre_map=None):
             cursor.close()
         if conn:
             conn.close()
+
+def save_incomplete_artist(mysql_conn, artist: IncompleteArtist):
+    cursor = mysql_conn.cursor()
+
+    # Avoid inserting duplicates for the same (spotify_id, user_tag)
+    cursor.execute(
+        """
+        SELECT 1 FROM incomplete_artists
+        WHERE spotify_id = %s AND user_tag = %s
+        """,
+        (artist.spotify_id, artist.user_tag)
+    )
+    if cursor.fetchone():
+        print(f"[SKIP] IncompleteArtist {artist.spotify_id} for user {artist.user_tag} already exists.")
+        cursor.close()
+        return
+
+    cursor.execute("""
+        INSERT INTO incomplete_artists
+        (spotify_id, user_tag, name, popularity, image_url, failure_reason, last_attempted)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, artist.to_sql_tuple())
+
+    mysql_conn.commit()
+    cursor.close()
+
+

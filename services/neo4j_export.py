@@ -6,6 +6,8 @@ import neo4j
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
+from neo4j import Session
+
 from model.artist_node import ArtistNode
 
 load_dotenv()
@@ -210,3 +212,20 @@ def export_artist_data_to_neo4j(artist_data: List[ArtistNode], write_to_file=Fal
         session.close()
         driver.close()
         print("[NEO4J] Connection closed.")
+
+
+def add_user_tag_to_artist(spotify_id: str, user_tag: str, session: Session):
+    query = """
+    MATCH (a:Artist {spotifyId: $spotify_id})
+    SET a.userTags = CASE
+        WHEN NOT $user_tag IN a.userTags THEN coalesce(a.userTags, []) + $user_tag
+        ELSE a.userTags
+    END
+    RETURN a.spotifyId AS spotifyId, a.userTags AS userTags
+    """
+    result = session.run(query, spotify_id=spotify_id, user_tag=user_tag)
+    record = result.single()
+    if record:
+        print(f"[NEO4J] Added user tag '{user_tag}' to artist '{record['spotifyId']}'. New tags: {record['userTags']}")
+    else:
+        print(f"[NEO4J] No artist found with Spotify ID: {spotify_id}")

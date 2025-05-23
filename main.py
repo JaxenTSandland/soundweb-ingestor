@@ -6,6 +6,7 @@ from typing import List
 import neo4j
 from neo4j import Session
 
+from model.incomplete_artist import IncompleteArtist
 from services.artist_lookup import get_existing_artist_by_spotify_id
 from services.lastfm import (
     fetch_top_artists,
@@ -15,7 +16,7 @@ from services.musicbrainz import fetch_artist_genre_data
 from services.spotify import fetch_spotify_data
 from services.combine_artist_data import combine_top_artist_data, implement_genre_data
 from services.neo4j_export import export_artist_data_to_neo4j
-from services.mysql_export import export_genres_to_mysql
+from services.mysql_export import export_genres_to_mysql, save_incomplete_artist
 
 from model.artist_node import ArtistNode
 from utils.checkpoint import save_checkpoint, load_checkpoint
@@ -216,22 +217,44 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         if own_driver:
             own_driver.close()
 
-def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session):
-    artist = ArtistNode(
-        id=spotify_id,
-        name="",
-        spotifyId=spotify_id,
-        userTags=[user_tag],
-        relatedArtists=[],
-        genres=[]
-    )
+def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysql_conn = None):
+    try:
+        artist = ArtistNode(
+            id=spotify_id,
+            name="",
+            spotifyId=spotify_id,
+            userTags=[user_tag],
+            relatedArtists=[],
+            genres=[]
+        )
 
-    artists = [artist]
-    artists = fetch_spotify_data(artists, write_to_file=False)
-    artists = fetch_artist_details(artists, write_to_file=False)
-    artists = fetch_artist_genre_data(artists, write_to_file=False)
-    artists = implement_genre_data(artists, top_artists=False)
-    export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+        artists = [artist]
+        artists = fetch_spotify_data(artists, write_to_file=False)
+        artists = fetch_artist_details(artists, write_to_file=False)
+        artists = fetch_artist_genre_data(artists, write_to_file=False)
+        artists = implement_genre_data(artists, top_artists=False)
+
+        if not artists[0].genres:
+            raise ValueError("No genres found after data fetching")
+
+        export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+
+    except Exception as e:
+        print(f"[INCOMPLETE] Failed to ingest artist {spotify_id}: {e}")
+
+        if mysql_conn:
+            try:
+                incomplete = IncompleteArtist(
+                    spotify_id=spotify_id,
+                    user_tag=user_tag,
+                    name=artist.name or "",
+                    popularity=artist.popularity or 0,
+                    image_url=artist.imageUrl or "",
+                    failure_reason=str(e)
+                )
+                save_incomplete_artist(mysql_conn, incomplete)
+            except Exception as db_err:
+                print(f"[INCOMPLETE] Failed to save incomplete artist {spotify_id} to MySQL: {db_err}")
 
 def get_custom_artists_by_user_tag(user_tag: str) -> List[str]:
     driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
