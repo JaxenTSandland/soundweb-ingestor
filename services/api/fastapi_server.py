@@ -90,7 +90,11 @@ def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
             if not meta:
                 return True
 
-            daysSinceLastDataRefresh = (datetime.now(timezone.utc) - datetime.fromisoformat(meta["lastUpdated"])).days
+            try:
+                last = datetime.fromisoformat(meta["lastUpdated"])
+                daysSinceLastDataRefresh = (datetime.now(timezone.utc) - last).days
+            except (KeyError, TypeError, ValueError):
+                daysSinceLastDataRefresh = 999
 
             if daysSinceLastDataRefresh >= 30:
                 return True
