@@ -217,17 +217,46 @@ def generate_custom_artist_data(spotify_id: str = None, mbid: str = None, user_t
         if own_driver:
             own_driver.close()
 
-def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysql_conn = None):
+def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysql_conn=None, already_exists=False):
     try:
+        all_tags = {user_tag}
+
+        # Step 1: Pull any tags from incomplete_artists (MySQL)
+        if mysql_conn:
+            try:
+                cursor = mysql_conn.cursor()
+                cursor.execute("""
+                    SELECT user_tag FROM incomplete_artists WHERE spotify_id = %s
+                """, (spotify_id,))
+                rows = cursor.fetchall()
+                for row in rows:
+                    all_tags.add(row[0])
+                cursor.close()
+            except Exception as e:
+                print(f"[WARN] Failed to fetch incomplete tags for {spotify_id}: {e}")
+
+        # Step 2: Pull any existing userTags from Neo4j if artist exists
+        if already_exists:
+            try:
+                result = session.run("MATCH (a:Artist {spotifyId: $id}) RETURN a.userTags AS tags", {"id": spotify_id})
+                record = result.single()
+                if record:
+                    existing_tags = record["tags"] or []
+                    all_tags.update(existing_tags)
+            except Exception as e:
+                print(f"[WARN] Failed to fetch existing tags for {spotify_id}: {e}")
+
+        # Step 3: Create artist node with merged user tags
         artist = ArtistNode(
             id=spotify_id,
             name="",
             spotifyId=spotify_id,
-            userTags=[user_tag],
+            userTags=list(all_tags),
             relatedArtists=[],
             genres=[]
         )
 
+        # Step 4: Fetch and process full data
         artists = [artist]
         artists = fetch_spotify_data(artists, write_to_file=False)
         artists = fetch_artist_details(artists, write_to_file=False)
@@ -237,7 +266,19 @@ def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysq
         if not artists[0].genres:
             raise ValueError("No genres found after data fetching")
 
+        # Step 5: Write to Neo4j
         export_artist_data_to_neo4j(artists, write_to_file=False, add_top_artist_label=False)
+
+        # Step 6: Cleanup MySQL incomplete records
+        if mysql_conn:
+            try:
+                cursor = mysql_conn.cursor()
+                cursor.execute("DELETE FROM incomplete_artists WHERE spotify_id = %s", (spotify_id,))
+                mysql_conn.commit()
+                cursor.close()
+                print(f"[CLEANUP] Removed {spotify_id} from incomplete_artists")
+            except Exception as cleanup_err:
+                print(f"[ERROR] Failed to clean up {spotify_id} from incomplete_artists: {cleanup_err}")
 
     except Exception as e:
         print(f"[INCOMPLETE] Failed to ingest artist {spotify_id}: {e}")
@@ -255,6 +296,7 @@ def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysq
                 save_incomplete_artist(mysql_conn, incomplete)
             except Exception as db_err:
                 print(f"[INCOMPLETE] Failed to save incomplete artist {spotify_id} to MySQL: {db_err}")
+
 
 def get_custom_artists_by_user_tag(user_tag: str) -> List[str]:
     driver = neo4j.GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))

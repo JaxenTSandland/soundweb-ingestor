@@ -26,6 +26,6 @@ ENTRYPOINT ["sh", "-c", "\
     elif [ \"$APP_MODE\" = \"cron\" ]; then \
         python main.py; \
     else \
-        echo '❌ Unknown APP_MODE value: $APP_MODE'; exit 1; \
+        echo 'Unknown APP_MODE value: $APP_MODE'; exit 1; \
     fi \
 "]

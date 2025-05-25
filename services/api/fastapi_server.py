@@ -89,13 +89,14 @@ def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
         def should_process(meta, sid):
             if not meta:
                 return True
+
+            daysSinceLastDataRefresh = (datetime.now(timezone.utc) - datetime.fromisoformat(meta["lastUpdated"])).days
+
+            if daysSinceLastDataRefresh >= 30:
+                return True
             if request.user_tag not in meta["userTags"]:
                 add_user_tag_to_artist(sid, request.user_tag, session)
-            try:
-                last = datetime.fromisoformat(meta["lastUpdated"])
-                return (datetime.now(timezone.utc) - last).days > 30
-            except Exception:
-                return True
+
 
         ids_to_process = [
             sid for sid in request.spotify_ids if should_process(existing_map.get(sid), sid)
@@ -103,7 +104,12 @@ def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
 
         for idx, sid in enumerate(ids_to_process, start=1):
             print(f"[{idx}/{len(ids_to_process)}] Processing artist ID: {sid}")
-            ingest_artist_minimal(sid, request.user_tag, session=session, mysql_conn=mysql_conn)
+            ingest_artist_minimal(sid,
+                                  request.user_tag,
+                                  session=session,
+                                  mysql_conn=mysql_conn,
+                                  already_exists=existing_map.get(sid) is not None
+                                  )
 
         return {
             "success": True,
