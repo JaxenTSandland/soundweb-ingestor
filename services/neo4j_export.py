@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from neo4j import Session
 
 from model.artist_node import ArtistNode
+from services.redis import set_to_cache
 
 load_dotenv()
 
@@ -221,11 +222,18 @@ def add_user_tag_to_artist(spotify_id: str, user_tag: str, session: Session):
         WHEN NOT $user_tag IN a.userTags THEN coalesce(a.userTags, []) + $user_tag
         ELSE a.userTags
     END
-    RETURN a.spotifyId AS spotifyId, a.userTags AS userTags
+    RETURN a.spotifyId AS spotifyId, a.userTags AS userTags, a.name AS name
     """
     result = session.run(query, spotify_id=spotify_id, user_tag=user_tag)
     record = result.single()
+
     if record:
         print(f"[NEO4J] Added user tag '{user_tag}' to artist '{record['spotifyId']}'. New tags: {record['userTags']}")
+        if record.get("name"):
+            try:
+                set_to_cache(f"ingest:latest:{user_tag}", {"name": record["name"]}, ex=60)
+                print(f"[Redis] Updated ingest cache for {user_tag}: {record['name']}")
+            except Exception as e:
+                print(f"[Redis] Failed to set ingest cache for {user_tag}: {e}")
     else:
         print(f"[NEO4J] No artist found with Spotify ID: {spotify_id}")

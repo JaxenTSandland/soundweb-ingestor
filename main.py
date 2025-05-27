@@ -13,6 +13,7 @@ from services.lastfm import (
     fetch_artist_details,
 )
 from services.musicbrainz import fetch_artist_genre_data
+from services.redis import set_to_cache
 from services.spotify import fetch_spotify_data
 from services.combine_artist_data import combine_top_artist_data, implement_genre_data
 from services.neo4j_export import export_artist_data_to_neo4j
@@ -259,9 +260,11 @@ def ingest_artist_minimal(spotify_id: str, user_tag: str, session: Session, mysq
         # Step 4: Fetch and process full data
         artists = [artist]
         artists = fetch_spotify_data(artists, write_to_file=False)
+        set_to_cache(f"ingest:latest:{user_tag}", {"name": artists[0].name}, ex=60)
         artists = fetch_artist_details(artists, write_to_file=False)
         artists = fetch_artist_genre_data(artists, write_to_file=False)
         artists = implement_genre_data(artists, top_artists=False)
+
 
         if not artists[0].genres:
             raise ValueError("No genres found after data fetching")
