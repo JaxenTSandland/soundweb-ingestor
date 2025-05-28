@@ -126,10 +126,8 @@ def implement_genre_data(artists: List[ArtistNode], top_artists: bool = False) -
     rankScore = 1
 
     for artist in artists:
-        if artist.id is None:
+        if artist.id is None or not artist.genres or artist.genres == []:
             continue
-        if not artist.genres or artist.genres == []:
-            raise ValueError("No genres found after data fetching")
         else:
             artist.finalize_genres()
 
