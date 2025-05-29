@@ -86,21 +86,38 @@ def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
     try:
         existing_map = get_existing_artists_metadata(session, request.spotify_ids)
 
+        # Fetch all artist IDs currently tagged by this user
+        query = """
+        MATCH (a:Artist)
+        WHERE $user_tag IN a.userTags
+        RETURN a.spotifyId AS sid
+        """
+        result = session.run(query, user_tag=request.user_tag)
+        tagged_ids = set(record["sid"] for record in result if record["sid"])
+        current_ids = set(request.spotify_ids)
+
+        # Remove tag from artists no longer in the current list
+        to_remove = tagged_ids - current_ids
+        if to_remove:
+            print(f"Removing user tag from {len(to_remove)} artists")
+            session.run("""
+                MATCH (a:Artist)
+                WHERE a.spotifyId IN $ids
+                SET a.userTags = [tag IN a.userTags WHERE tag <> $user_tag]
+            """, ids=list(to_remove), user_tag=request.user_tag)
+
         def should_process(meta, sid):
             if not meta:
                 return True
-
             try:
                 last = datetime.fromisoformat(meta["lastUpdated"])
                 daysSinceLastDataRefresh = (datetime.now(timezone.utc) - last).days
             except (KeyError, TypeError, ValueError):
                 daysSinceLastDataRefresh = 999
-
             if daysSinceLastDataRefresh >= 30:
                 return True
             if request.user_tag not in meta["userTags"]:
                 add_user_tag_to_artist(sid, request.user_tag, session)
-
 
         ids_to_process = [
             sid for sid in request.spotify_ids if should_process(existing_map.get(sid), sid)
@@ -108,16 +125,18 @@ def ingest_multiple_custom_artists(request: BulkCustomArtistRequest):
 
         for idx, sid in enumerate(ids_to_process, start=1):
             print(f"[{idx}/{len(ids_to_process)}] Processing artist ID: {sid}")
-            ingest_artist_minimal(sid,
-                                  request.user_tag,
-                                  session=session,
-                                  mysql_conn=mysql_conn,
-                                  already_exists=existing_map.get(sid) is not None
-                                  )
+            ingest_artist_minimal(
+                sid,
+                request.user_tag,
+                session=session,
+                mysql_conn=mysql_conn,
+                already_exists=existing_map.get(sid) is not None
+            )
 
         return {
             "success": True,
             "processedCount": len(ids_to_process),
+            "removedCount": len(to_remove),
             "skippedCount": len(request.spotify_ids) - len(ids_to_process)
         }
 
@@ -147,7 +166,6 @@ def remove_user_tag_from_artist(request: RemoveUserTagRequest):
         return remove_user_tag_from_artist_node(request.spotify_id, request.user_tag)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 def get_existing_artists_metadata(session: Session, spotify_ids: List[str]) -> dict:
     result = session.run(
